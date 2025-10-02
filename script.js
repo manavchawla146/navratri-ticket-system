@@ -22,7 +22,7 @@ function generateQRDataURL(text) {
         tempDiv.style.display = 'none';
         document.body.appendChild(tempDiv);
 
-        const qr = new QRCode(tempDiv, {
+        new QRCode(tempDiv, {
             text: text,
             width: 150,
             height: 150,
@@ -51,17 +51,13 @@ document.getElementById('generatePDFBtn').addEventListener('click', async functi
         const s = students[i];
         const qrDataUrl = await generateQRDataURL(s.ID);
 
-        // Add student info
         doc.setFontSize(16);
         doc.text(`Student: ${s.Name}`, 20, 20);
         doc.text(`ID: ${s.ID}`, 20, 30);
 
-        // Add QR code
         doc.addImage(qrDataUrl, 'PNG', 20, 40, 50, 50);
 
-        if (i < students.length - 1) {
-            doc.addPage();
-        }
+        if (i < students.length - 1) doc.addPage();
     }
 
     doc.save("All_Student_QR.pdf");
@@ -92,9 +88,10 @@ document.getElementById('startScanBtn').addEventListener('click', async function
     }
 
     const video = document.getElementById('preview');
-    qrScanner = new QrScanner(video, result => {
+    qrScanner = new window.QrScanner(video, result => {
         handleScan(result);
     });
+
     await qrScanner.start();
 });
 

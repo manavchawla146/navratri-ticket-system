@@ -16,7 +16,5 @@ Thumbs.db
 *.sln
 *.sw?
 
-# Excel files
-*.xlsx
-*.xls
-*.csv
+# CSV files (if you want to exclude CSV files, uncomment the line below)
+# *.csv

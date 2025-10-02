@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Navratri Entry System</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <h1>Navratri Entry System</h1>
+
+    <button id="loadExcelBtn">Load Excel</button>
+    <button id="generatePDFBtn">Generate QR PDF</button>
+    <button id="startScanBtn">Start Scanning</button>
+    <button id="downloadBtn">Download Entry Log</button>
+
+    <div id="scanner">
+        <video id="preview"></video>
+    </div>
+    <div id="status"></div>
+
+    <table id="entryTable">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Year</th>
+                <th>Entry Status</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+
+    <!-- Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://davidshimjs.github.io/qrcodejs/qrcode.min.js"></script>
+    <script src="https://unpkg.com/qr-scanner@1.4.2/qr-scanner.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

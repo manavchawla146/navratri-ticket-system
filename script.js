@@ -3,6 +3,9 @@ let qrScanner;
 let isScanning = false;
 let lastScanTime = 0;
 let scanCooldown = 3000; // 3 seconds between scans
+let syncInterval = null;
+let lastSyncTime = 0;
+let isSyncing = false;
 
 // Google Sheets URL
 const GOOGLE_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbxKDEGUr9uCd3ZlU4SMvPI6v7u8N8Dud1suJPCaJuYv9dqMemv3HZVJo375UKF-VSNYcw/exec';
@@ -19,12 +22,34 @@ function generateHash(str) {
     return Math.abs(hash).toString(16).toUpperCase().padStart(8, '0');
 }
 
-// Load data from Google Sheets
-async function loadExcel() {
+// Update sync status indicator
+function updateSyncStatus(message, isError = false) {
+    let statusEl = document.getElementById('syncStatus');
+    if (!statusEl) {
+        statusEl = document.createElement('div');
+        statusEl.id = 'syncStatus';
+        statusEl.style.cssText = 'position: fixed; top: 10px; right: 10px; background: rgba(0,0,0,0.8); color: white; padding: 8px 15px; border-radius: 4px; font-size: 12px; z-index: 999;';
+        document.body.appendChild(statusEl);
+    }
+    statusEl.textContent = message;
+    statusEl.style.background = isError ? 'rgba(220, 53, 69, 0.9)' : 'rgba(40, 167, 69, 0.9)';
+    lastSyncTime = Date.now();
+}
+
+// Load data from Google Sheets (silent mode for background sync)
+async function loadExcel(silent = false) {
+    if (isSyncing) return; // Prevent concurrent syncs
+    
     try {
+        isSyncing = true;
         const loadBtn = document.getElementById('loadExcelBtn');
-        loadBtn.disabled = true;
-        loadBtn.innerText = 'Loading...';
+        
+        if (!silent) {
+            loadBtn.disabled = true;
+            loadBtn.innerText = 'Loading...';
+        } else {
+            updateSyncStatus('Syncing...', false);
+        }
 
         // Fetch data from Google Sheets
         const response = await fetch(GOOGLE_SHEETS_URL + '?action=getData');
@@ -45,19 +70,57 @@ async function loadExcel() {
             });
             
             populateTable();
-            console.log("Loaded students from Google Sheets:", students);
-            alert(`Loaded ${students.length} students from Google Sheets!`);
+            
+            const enteredCount = students.filter(s => s.Entry_Status === 'Entered').length;
+            console.log(`Synced: ${enteredCount} entered out of ${students.length} total`);
+            
+            if (!silent) {
+                alert(`Loaded ${students.length} students from Google Sheets!\nCurrent entries: ${enteredCount}`);
+            } else {
+                updateSyncStatus(`✓ ${enteredCount} Entered | Total: ${students.length}`, false);
+            }
         } else {
             throw new Error(data.message || 'Failed to load data');
         }
         
-        loadBtn.disabled = false;
-        loadBtn.innerText = 'Load Excel';
+        if (!silent) {
+            loadBtn.disabled = false;
+            loadBtn.innerText = 'Load Excel';
+        }
     } catch (error) {
         console.error('Error loading from Google Sheets:', error);
-        alert('Error loading data from Google Sheets: ' + error.message);
-        document.getElementById('loadExcelBtn').disabled = false;
-        document.getElementById('loadExcelBtn').innerText = 'Load Excel';
+        if (!silent) {
+            alert('Error loading data from Google Sheets: ' + error.message);
+            document.getElementById('loadExcelBtn').disabled = false;
+            document.getElementById('loadExcelBtn').innerText = 'Load Excel';
+        } else {
+            updateSyncStatus('✗ Sync failed', true);
+        }
+    } finally {
+        isSyncing = false;
+    }
+}
+
+// Start automatic background sync
+function startAutoSync() {
+    if (syncInterval) return; // Already running
+    
+    // Sync every 8 seconds
+    syncInterval = setInterval(() => {
+        if (!isSyncing && students.length > 0) {
+            loadExcel(true); // Silent sync
+        }
+    }, 8000);
+    
+    console.log("Auto-sync started (every 8 seconds)");
+}
+
+// Stop automatic background sync
+function stopAutoSync() {
+    if (syncInterval) {
+        clearInterval(syncInterval);
+        syncInterval = null;
+        console.log("Auto-sync stopped");
     }
 }
 
@@ -80,6 +143,14 @@ async function updateEntryStatus(id, name, status, timestamp) {
         });
         
         console.log('Entry updated in Google Sheets:', { id, name, status, timestamp });
+        
+        // Immediately sync to get latest data after an update
+        setTimeout(() => {
+            if (!isSyncing) {
+                loadExcel(true);
+            }
+        }, 1000);
+        
         return true;
     } catch (error) {
         console.error('Error updating Google Sheets:', error);
@@ -87,7 +158,16 @@ async function updateEntryStatus(id, name, status, timestamp) {
     }
 }
 
-document.getElementById('loadExcelBtn').addEventListener('click', loadExcel);
+document.getElementById('loadExcelBtn').addEventListener('click', () => loadExcel(false));
+
+// Auto-load data when page loads
+window.addEventListener('DOMContentLoaded', async () => {
+    console.log("Page loaded - auto-loading data...");
+    await loadExcel(false);
+    
+    // Start auto-sync after initial load
+    startAutoSync();
+});
 
 // Helper: generate QR data URL using canvas (mobile-optimized)
 function generateQRDataURL(text) {
@@ -323,7 +403,7 @@ document.getElementById('searchBox').addEventListener('input', function(e) {
 // Start scanning
 document.getElementById('startScanBtn').addEventListener('click', async function() {
     if (!students.length) {
-        alert("Load Excel first!");
+        alert("Waiting for data to load... Please try again in a moment.");
         return;
     }
 
@@ -364,6 +444,11 @@ document.getElementById('startScanBtn').addEventListener('click', async function
         
         isScanning = true;
         statusDiv.innerText = "Point camera at QR code";
+        
+        // Do an immediate sync when scanner starts
+        if (!isSyncing) {
+            loadExcel(true);
+        }
         
     } catch (error) {
         alert("Camera access denied or not available: " + error.message);

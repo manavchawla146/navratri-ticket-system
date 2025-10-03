@@ -158,7 +158,18 @@ async function updateEntryStatus(id, name, status, timestamp) {
     }
 }
 
-document.getElementById('loadExcelBtn').addEventListener('click', () => loadExcel(false));
+// Check if device is mobile
+function isMobileDevice() {
+    return window.innerWidth <= 768; // Same breakpoint as in CSS
+}
+
+document.getElementById('loadExcelBtn').addEventListener('click', () => {
+    if (isMobileDevice()) {
+        alert('This feature is only available on desktop devices.');
+        return;
+    }
+    loadExcel(false);
+});
 
 // Auto-load data when page loads
 window.addEventListener('DOMContentLoaded', async () => {
@@ -275,12 +286,10 @@ function generateQRDataURL(text) {
 
 // Generate single PDF with all students (separate pages)
 document.getElementById('generatePDFBtn').addEventListener('click', async function() {
-    if (!students.length) {
-        alert("Load Excel first!");
+    if (isMobileDevice()) {
+        alert('This feature is only available on desktop devices.');
         return;
     }
-
-    this.disabled = true;
     this.innerText = "Generating...";
 
     try {

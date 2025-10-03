@@ -1,6 +1,8 @@
 let students = [];
 let qrScanner;
 let isScanning = false;
+let lastScanTime = 0;
+let scanCooldown = 3000; // 3 seconds between scans
 
 // Load Excel file from same folder
 async function loadExcel() {
@@ -171,73 +173,82 @@ document.getElementById('closeScanBtn').addEventListener('click', function() {
         qrScanner.stop();
     }
     isScanning = false;
+    lastScanTime = 0;
     document.getElementById('scanner').style.display = 'none';
     document.getElementById('status').innerText = "";
+});
+
+// Tap status to reset and scan again
+document.getElementById('status').addEventListener('click', function() {
+    if (isScanning) {
+        this.innerText = "Point camera at QR code";
+        this.style.color = 'white';
+        this.style.fontSize = '18px';
+        lastScanTime = 0; // Reset cooldown
+    }
 });
 
 // Handle scanned QR
 function handleScan(data) {
     if (!isScanning) return;
     
-    const scannedID = String(data).trim();
-    console.log("Scanned Data:", scannedID);
+    // Cooldown check to prevent rapid re-scanning
+    const now = Date.now();
+    if (now - lastScanTime < scanCooldown) {
+        return;
+    }
+    lastScanTime = now;
     
-    // Try to find student with exact match first
-    let student = students.find(s => String(s.ID).trim() === scannedID);
+    const scannedData = String(data).trim();
+    console.log("Raw Scanned Data:", scannedData);
+    console.log("All Student IDs:", students.map(s => s.ID));
     
-    // If not found, try to extract just numbers from scanned data
+    // Try multiple matching strategies
+    let student = null;
+    
+    // Strategy 1: Exact match
+    student = students.find(s => String(s.ID).trim() === scannedData);
+    
+    // Strategy 2: Case-insensitive match
     if (!student) {
-        const numbersOnly = scannedID.replace(/\D/g, '');
-        console.log("Trying numbers only:", numbersOnly);
+        student = students.find(s => 
+            String(s.ID).trim().toLowerCase() === scannedData.toLowerCase()
+        );
+    }
+    
+    // Strategy 3: Extract numbers only
+    if (!student) {
+        const numbersOnly = scannedData.replace(/\D/g, '');
         student = students.find(s => String(s.ID).trim() === numbersOnly);
+    }
+    
+    // Strategy 4: Check if scanned data contains the ID
+    if (!student) {
+        student = students.find(s => scannedData.includes(String(s.ID).trim()));
     }
     
     const statusDiv = document.getElementById('status');
 
     if (!student) {
-        statusDiv.innerText = `❌ Invalid QR Code!\nScanned: ${scannedID}`;
+        statusDiv.innerText = `❌ Invalid QR Code!\nScanned: "${scannedData}"\n\nTap to continue...`;
         statusDiv.style.color = 'red';
-        statusDiv.style.fontSize = '20px';
+        statusDiv.style.fontSize = '18px';
         playBeep(false);
-        
-        setTimeout(() => {
-            if (isScanning) {
-                statusDiv.innerText = "Point camera at QR code";
-                statusDiv.style.color = 'white';
-                statusDiv.style.fontSize = '18px';
-            }
-        }, 3000);
         return;
     }
 
     if (student.Entry_Status === 'Entered') {
-        statusDiv.innerText = `⚠️ ${student.Name}\nAlready Entered!`;
+        statusDiv.innerText = `⚠️ ${student.Name}\n(ID: ${student.ID})\nAlready Entered!\n\nTap to continue...`;
         statusDiv.style.color = 'orange';
-        statusDiv.style.fontSize = '24px';
+        statusDiv.style.fontSize = '20px';
         playBeep(false);
-        
-        setTimeout(() => {
-            if (isScanning) {
-                statusDiv.innerText = "Point camera at QR code";
-                statusDiv.style.color = 'white';
-                statusDiv.style.fontSize = '18px';
-            }
-        }, 2000);
     } else {
         student.Entry_Status = 'Entered';
-        statusDiv.innerText = `✓ ${student.Name}\nEntry Successful!`;
-        statusDiv.style.color = 'green';
-        statusDiv.style.fontSize = '24px';
+        statusDiv.innerText = `✓ ${student.Name}\n(ID: ${student.ID})\nEntry Successful!\n\nTap to continue...`;
+        statusDiv.style.color = '#00ff00';
+        statusDiv.style.fontSize = '22px';
         playBeep(true);
         populateTable();
-        
-        setTimeout(() => {
-            if (isScanning) {
-                statusDiv.innerText = "Point camera at QR code";
-                statusDiv.style.color = 'white';
-                statusDiv.style.fontSize = '18px';
-            }
-        }, 2000);
     }
 }
 

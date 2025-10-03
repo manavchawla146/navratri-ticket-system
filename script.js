@@ -11,10 +11,14 @@ async function loadExcel() {
     const data = XLSX.utils.sheet_to_json(firstSheet);
     students = data;
     students.forEach(s => {
-        s.ID = String(s.ID).trim();
+        // Normalize ID - remove any spaces, convert to string
+        s.ID = String(s.ID || s.id || s.Id).trim();
+        s.Name = s.Name || s.name || '';
+        s.Year = s.Year || s.year || '';
         s.Entry_Status = s.Entry_Status || '';
     });
     populateTable();
+    console.log("Loaded students:", students); // Debug
 }
 
 document.getElementById('loadExcelBtn').addEventListener('click', loadExcel);
@@ -154,6 +158,8 @@ function handleScan(data) {
     if (!isScanning) return;
     
     const scannedID = String(data).trim();
+    console.log("Scanned:", scannedID); // Debug log
+    console.log("Available IDs:", students.map(s => String(s.ID).trim())); // Debug log
     const student = students.find(s => String(s.ID).trim() === scannedID);
     const statusDiv = document.getElementById('status');
 

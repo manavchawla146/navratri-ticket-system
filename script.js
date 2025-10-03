@@ -146,13 +146,16 @@ document.getElementById('startScanBtn').addEventListener('click', async function
                 video, 
                 result => {
                     if (isScanning) {
-                        handleScan(result.data);
+                        // Extract data properly from result
+                        const scannedData = result.data || result;
+                        handleScan(scannedData);
                     }
                 },
                 {
                     returnDetailedScanResult: true,
                     highlightScanRegion: true,
                     highlightCodeOutline: true,
+                    maxScansPerSecond: 1, // Limit scan rate
                 }
             );
             await qrScanner.start();
@@ -199,9 +202,29 @@ function handleScan(data) {
     }
     lastScanTime = now;
     
-    const scannedData = String(data).trim();
-    console.log("Raw Scanned Data:", scannedData);
-    console.log("All Student IDs:", students.map(s => s.ID));
+    // Handle different data formats
+    let scannedData = '';
+    if (typeof data === 'object' && data.data) {
+        scannedData = String(data.data).trim();
+    } else {
+        scannedData = String(data).trim();
+    }
+    
+    console.log("=== SCAN DEBUG ===");
+    console.log("Raw data:", data);
+    console.log("Processed scannedData:", scannedData);
+    console.log("All Student IDs:", students.map(s => `"${s.ID}"`));
+    console.log("==================");
+    
+    // Check if we got empty data
+    if (!scannedData || scannedData === '') {
+        const statusDiv = document.getElementById('status');
+        statusDiv.innerText = `❌ Empty QR Data!\nQR code may be corrupted\n\nTap to continue...`;
+        statusDiv.style.color = 'red';
+        statusDiv.style.fontSize = '18px';
+        playBeep(false);
+        return;
+    }
     
     // Try multiple matching strategies
     let student = null;
@@ -219,6 +242,7 @@ function handleScan(data) {
     // Strategy 3: Extract numbers only
     if (!student) {
         const numbersOnly = scannedData.replace(/\D/g, '');
+        console.log("Trying numbers only:", numbersOnly);
         student = students.find(s => String(s.ID).trim() === numbersOnly);
     }
     

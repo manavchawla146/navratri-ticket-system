@@ -163,13 +163,7 @@ function isMobileDevice() {
     return window.innerWidth <= 768; // Same breakpoint as in CSS
 }
 
-document.getElementById('loadExcelBtn').addEventListener('click', () => {
-    if (isMobileDevice()) {
-        alert('This feature is only available on desktop devices.');
-        return;
-    }
-    loadExcel(false);
-});
+document.getElementById('loadExceldocument.getElementById('loadExcelBtn').addEventListener('click', () => loadExcel(false));
 
 // Auto-load data when page loads
 window.addEventListener('DOMContentLoaded', async () => {
@@ -286,31 +280,13 @@ function generateQRDataURL(text) {
 
 // Generate single PDF with all students (separate pages)
 document.getElementById('generatePDFBtn').addEventListener('click', async function() {
-    if (isMobileDevice()) {
-        alert('This feature is only available on desktop devices.');
+    if (!students.length) {
+        alert("Load Excel first!");
         return;
     }
-    this.innerText = "Generating...";
 
-    try {
-        const { jsPDF } = window.jspdf;
-        const doc = new jsPDF();
-        let successCount = 0;
-        let failedStudents = [];
-
-        for (let i = 0; i < students.length; i++) {
-            const s = students[i];
-            
-            // Show progress
-            this.innerText = `Generating ${i + 1}/${students.length}`;
-            
-            // Retry mechanism for QR generation
-            let qrDataUrl = null;
-            let retries = 5; // Increased retries for mobile
-            
-            while (retries > 0 && !qrDataUrl) {
-                try {
-                    // Use Hash_Code for QR generation
+    this.disabled = true;
+on
                     qrDataUrl = await generateQRDataURL(String(s.Hash_Code));
                     
                     // Stricter validation

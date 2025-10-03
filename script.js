@@ -6,6 +6,7 @@ let scanCooldown = 3000; // 3 seconds between scans
 let syncInterval = null;
 let lastSyncTime = 0;
 let isSyncing = false;
+let pendingStudent = null; // Store student pending confirmation
 
 // Google Sheets URL
 const GOOGLE_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbxKDEGUr9uCd3ZlU4SMvPI6v7u8N8Dud1suJPCaJuYv9dqMemv3HZVJo375UKF-VSNYcw/exec';
@@ -158,6 +159,86 @@ async function updateEntryStatus(id, name, status, timestamp) {
     }
 }
 
+// Show confirmation modal
+function showConfirmationModal(student) {
+    const modal = document.getElementById('confirmModal');
+    const detailsDiv = document.getElementById('studentDetails');
+    const acceptBtn = document.getElementById('acceptBtn');
+    
+    // Check if already entered
+    const isAlreadyEntered = student.Entry_Status === 'Entered';
+    
+    // Build details HTML
+    let detailsHTML = `
+        <p><strong>Name:</strong> ${student.Name}</p>
+        <p><strong>ID:</strong> ${student.ID}</p>
+        <p><strong>Year:</strong> ${student.Year}</p>
+        <p><strong>Hash Code:</strong> ${student.Hash_Code}</p>
+    `;
+    
+    if (isAlreadyEntered) {
+        detailsHTML += `<p class="already-entered-text">⚠️ Already Entered!</p>`;
+        if (student.Timestamp) {
+            detailsHTML += `<p><strong>Entry Time:</strong> ${new Date(student.Timestamp).toLocaleString()}</p>`;
+        }
+        acceptBtn.style.display = 'none';
+    } else {
+        acceptBtn.style.display = 'flex';
+    }
+    
+    detailsDiv.innerHTML = detailsHTML;
+    
+    // Apply styling based on status
+    if (isAlreadyEntered) {
+        detailsDiv.classList.add('already-entered');
+    } else {
+        detailsDiv.classList.remove('already-entered');
+    }
+    
+    modal.style.display = 'flex';
+    pendingStudent = student;
+    
+    // Play beep
+    playBeep(!isAlreadyEntered);
+}
+
+// Hide confirmation modal
+function hideConfirmationModal() {
+    const modal = document.getElementById('confirmModal');
+    modal.style.display = 'none';
+    pendingStudent = null;
+    
+    // Resume scanning
+    const statusDiv = document.getElementById('status');
+    statusDiv.innerText = "Point camera at QR code";
+    statusDiv.style.color = 'white';
+    statusDiv.style.fontSize = '18px';
+    lastScanTime = 0; // Reset cooldown
+}
+
+// Accept entry button handler
+document.getElementById('acceptBtn').addEventListener('click', function() {
+    if (pendingStudent && pendingStudent.Entry_Status !== 'Entered') {
+        pendingStudent.Entry_Status = 'Entered';
+        pendingStudent.Timestamp = new Date().toISOString();
+        
+        populateTable();
+        updateEntryStatus(pendingStudent.ID, pendingStudent.Name, 'Entered', pendingStudent.Timestamp);
+        
+        hideConfirmationModal();
+    }
+});
+
+// Cancel button handler
+document.getElementById('cancelBtn').addEventListener('click', function() {
+    hideConfirmationModal();
+});
+
+// Close modal when clicking overlay
+document.getElementById('modalOverlay').addEventListener('click', function() {
+    hideConfirmationModal();
+});
+
 document.getElementById('loadExcelBtn').addEventListener('click', () => loadExcel(false));
 
 // Auto-load data when page loads
@@ -173,7 +254,6 @@ window.addEventListener('DOMContentLoaded', async () => {
 function generateQRDataURL(text) {
     return new Promise((resolve, reject) => {
         try {
-            // Create a visible temporary container (required for some mobile browsers)
             const container = document.createElement('div');
             container.style.position = 'fixed';
             container.style.top = '0';
@@ -185,10 +265,8 @@ function generateQRDataURL(text) {
             container.style.pointerEvents = 'none';
             document.body.appendChild(container);
 
-            // Clear any previous content
             container.innerHTML = '';
 
-            // Generate QR code with optimized settings for mobile
             const qr = new QRCode(container, {
                 text: String(text),
                 width: 256,
@@ -198,7 +276,6 @@ function generateQRDataURL(text) {
                 correctLevel: QRCode.CorrectLevel.H
             });
 
-            // Use requestAnimationFrame to ensure rendering is complete
             requestAnimationFrame(() => {
                 setTimeout(() => {
                     try {
@@ -206,17 +283,13 @@ function generateQRDataURL(text) {
                         const img = container.querySelector('img');
                         
                         if (canvas) {
-                            // Create a new canvas to ensure clean render
                             const newCanvas = document.createElement('canvas');
                             newCanvas.width = 256;
                             newCanvas.height = 256;
                             const ctx = newCanvas.getContext('2d');
                             
-                            // Draw white background first
                             ctx.fillStyle = '#ffffff';
                             ctx.fillRect(0, 0, 256, 256);
-                            
-                            // Draw the QR code
                             ctx.drawImage(canvas, 0, 0, 256, 256);
                             
                             const dataUrl = newCanvas.toDataURL('image/png', 1.0);
@@ -225,14 +298,12 @@ function generateQRDataURL(text) {
                                 document.body.removeChild(container);
                             }
                             
-                            // Validate the data URL
                             if (dataUrl && dataUrl.startsWith('data:image/png') && dataUrl.length > 1000) {
                                 resolve(dataUrl);
                             } else {
                                 reject(new Error('Invalid QR code data'));
                             }
                         } else if (img && img.complete && img.src) {
-                            // Use image if available
                             const imgCanvas = document.createElement('canvas');
                             imgCanvas.width = 256;
                             imgCanvas.height = 256;
@@ -265,7 +336,7 @@ function generateQRDataURL(text) {
                         }
                         reject(err);
                     }
-                }, 1200); // Longer wait for mobile
+                }, 1200);
             });
         } catch (error) {
             reject(error);
@@ -292,19 +363,15 @@ document.getElementById('generatePDFBtn').addEventListener('click', async functi
         for (let i = 0; i < students.length; i++) {
             const s = students[i];
             
-            // Show progress
             this.innerText = `Generating ${i + 1}/${students.length}`;
             
-            // Retry mechanism for QR generation
             let qrDataUrl = null;
-            let retries = 5; // Increased retries for mobile
+            let retries = 5;
             
             while (retries > 0 && !qrDataUrl) {
                 try {
-                    // Use Hash_Code for QR generation
                     qrDataUrl = await generateQRDataURL(String(s.Hash_Code));
                     
-                    // Stricter validation
                     if (!qrDataUrl || !qrDataUrl.startsWith('data:image/png') || qrDataUrl.length < 1000) {
                         throw new Error('Invalid QR data');
                     }
@@ -323,17 +390,15 @@ document.getElementById('generatePDFBtn').addEventListener('click', async functi
             }
             
             if (!qrDataUrl) {
-                continue; // Skip this student
+                continue;
             }
 
-            // Add page content
             doc.setFontSize(16);
             doc.text(`Student: ${s.Name}`, 20, 20);
             doc.text(`ID: ${s.ID}`, 20, 30);
             doc.text(`Year: ${s.Year}`, 20, 40);
             doc.text(`Hash: ${s.Hash_Code}`, 20, 50);
 
-            // Add QR code image
             try {
                 doc.addImage(qrDataUrl, 'PNG', 20, 60, 60, 60, `qr_${s.Hash_Code}`, 'SLOW');
                 successCount++;
@@ -344,14 +409,11 @@ document.getElementById('generatePDFBtn').addEventListener('click', async functi
 
             if (i < students.length - 1) doc.addPage();
             
-            // Longer delay for mobile to prevent memory issues
             await new Promise(resolve => setTimeout(resolve, 300));
         }
 
-        // Save the PDF
         doc.save("All_Student_QR.pdf");
         
-        // Show result
         let message = `PDF generated with ${successCount} QR codes!`;
         if (failedStudents.length > 0) {
             message += `\n\nFailed to generate for:\n${failedStudents.join('\n')}`;
@@ -427,7 +489,6 @@ document.getElementById('startScanBtn').addEventListener('click', async function
                 video, 
                 result => {
                     if (isScanning) {
-                        // Extract data properly from result
                         const scannedData = result.data || result;
                         handleScan(scannedData);
                     }
@@ -436,7 +497,7 @@ document.getElementById('startScanBtn').addEventListener('click', async function
                     returnDetailedScanResult: true,
                     highlightScanRegion: true,
                     highlightCodeOutline: true,
-                    maxScansPerSecond: 1, // Limit scan rate
+                    maxScansPerSecond: 1,
                 }
             );
             await qrScanner.start();
@@ -445,7 +506,6 @@ document.getElementById('startScanBtn').addEventListener('click', async function
         isScanning = true;
         statusDiv.innerText = "Point camera at QR code";
         
-        // Do an immediate sync when scanner starts
         if (!isSyncing) {
             loadExcel(true);
         }
@@ -473,7 +533,7 @@ document.getElementById('status').addEventListener('click', function() {
         this.innerText = "Point camera at QR code";
         this.style.color = 'white';
         this.style.fontSize = '18px';
-        lastScanTime = 0; // Reset cooldown
+        lastScanTime = 0;
     }
 });
 
@@ -481,14 +541,12 @@ document.getElementById('status').addEventListener('click', function() {
 function handleScan(data) {
     if (!isScanning) return;
     
-    // Cooldown check to prevent rapid re-scanning
     const now = Date.now();
     if (now - lastScanTime < scanCooldown) {
         return;
     }
     lastScanTime = now;
     
-    // Handle different data formats
     let scannedData = '';
     if (typeof data === 'object' && data.data) {
         scannedData = String(data.data).trim();
@@ -502,7 +560,6 @@ function handleScan(data) {
     console.log("All Student Hash Codes:", students.map(s => `"${s.Hash_Code}"`));
     console.log("==================");
     
-    // Check if we got empty data
     if (!scannedData || scannedData === '') {
         const statusDiv = document.getElementById('status');
         statusDiv.innerText = `Empty QR Data!\nQR code may be corrupted\n\nTap to continue...`;
@@ -512,20 +569,16 @@ function handleScan(data) {
         return;
     }
     
-    // Try multiple matching strategies using Hash_Code
     let student = null;
     
-    // Strategy 1: Exact hash match
     student = students.find(s => String(s.Hash_Code).trim() === scannedData);
     
-    // Strategy 2: Case-insensitive hash match
     if (!student) {
         student = students.find(s => 
             String(s.Hash_Code).trim().toLowerCase() === scannedData.toLowerCase()
         );
     }
     
-    // Strategy 3: Check if scanned data contains the hash
     if (!student) {
         student = students.find(s => scannedData.includes(String(s.Hash_Code).trim()));
     }
@@ -540,23 +593,8 @@ function handleScan(data) {
         return;
     }
 
-    if (student.Entry_Status === 'Entered') {
-        statusDiv.innerText = `${student.Name}\n(ID: ${student.ID})\nAlready Entered!\n\nTap to continue...`;
-        statusDiv.style.color = 'orange';
-        statusDiv.style.fontSize = '20px';
-        playBeep(false);
-    } else {
-        student.Entry_Status = 'Entered';
-        student.Timestamp = new Date().toISOString();
-        statusDiv.innerText = `${student.Name}\n(ID: ${student.ID})\nEntry Successful!\n\nTap to continue...`;
-        statusDiv.style.color = '#00ff00';
-        statusDiv.style.fontSize = '22px';
-        playBeep(true);
-        populateTable();
-        
-        // Update in Google Sheets
-        updateEntryStatus(student.ID, student.Name, 'Entered', student.Timestamp);
-    }
+    // Show confirmation modal instead of direct entry
+    showConfirmationModal(student);
 }
 
 // Audio feedback
@@ -585,7 +623,6 @@ document.getElementById('downloadBtn').addEventListener('click', function() {
         return;
     }
 
-    // Filter only students who have entered
     const enteredStudents = students.filter(s => s.Entry_Status === 'Entered');
     
     if (enteredStudents.length === 0) {

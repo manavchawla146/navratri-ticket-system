@@ -219,11 +219,21 @@ function hideConfirmationModal() {
 // Accept entry button handler
 document.getElementById('acceptBtn').addEventListener('click', function() {
     if (pendingStudent && pendingStudent.Entry_Status !== 'Entered') {
+        const timestamp = new Date().toISOString();
+        
+        // Update the pending student object
         pendingStudent.Entry_Status = 'Entered';
-        pendingStudent.Timestamp = new Date().toISOString();
+        pendingStudent.Timestamp = timestamp;
+        
+        // IMPORTANT: Find and update the student in the main students array
+        const studentIndex = students.findIndex(s => s.ID === pendingStudent.ID);
+        if (studentIndex !== -1) {
+            students[studentIndex].Entry_Status = 'Entered';
+            students[studentIndex].Timestamp = timestamp;
+        }
         
         populateTable();
-        updateEntryStatus(pendingStudent.ID, pendingStudent.Name, 'Entered', pendingStudent.Timestamp);
+        updateEntryStatus(pendingStudent.ID, pendingStudent.Name, 'Entered', timestamp);
         
         hideConfirmationModal();
     }
@@ -540,6 +550,12 @@ document.getElementById('status').addEventListener('click', function() {
 // Handle scanned QR
 function handleScan(data) {
     if (!isScanning) return;
+    
+    // Don't process if modal is open
+    const modal = document.getElementById('confirmModal');
+    if (modal.style.display === 'flex') {
+        return;
+    }
     
     const now = Date.now();
     if (now - lastScanTime < scanCooldown) {

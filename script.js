@@ -5,7 +5,7 @@ let lastScanTime = 0;
 let scanCooldown = 3000; // 3 seconds between scans
 
 // Google Sheets URL
-const GOOGLE_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbxUcZevlN1YSdLbm8F5ZzLbqDmdF2uwxd4JYysde_Ez3CcBV9qZl7W6MnqkAMPwydCS_A/exec';
+const GOOGLE_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbxKDEGUr9uCd3ZlU4SMvPI6v7u8N8Dud1suJPCaJuYv9dqMemv3HZVJo375UKF-VSNYcw/exec';
 
 // Simple hash function to generate hash from string
 function generateHash(str) {

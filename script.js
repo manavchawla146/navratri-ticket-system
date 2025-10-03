@@ -4,12 +4,25 @@ let isScanning = false;
 let lastScanTime = 0;
 let scanCooldown = 3000; // 3 seconds between scans
 
+// Simple hash function to generate hash from string
+function generateHash(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash; // Convert to 32-bit integer
+    }
+    // Convert to positive hex string
+    return Math.abs(hash).toString(16).toUpperCase().padStart(8, '0');
+}
+
 // Save entries to localStorage
 function saveEntriesToStorage() {
     const entries = {};
     students.forEach(s => {
         if (s.Entry_Status === 'Entered') {
-            entries[s.ID] = {
+            entries[s.Hash_Code] = {
+                ID: s.ID,
                 Name: s.Name,
                 Year: s.Year,
                 Entry_Status: s.Entry_Status,
@@ -27,9 +40,9 @@ function loadEntriesFromStorage() {
     if (savedEntries) {
         const entries = JSON.parse(savedEntries);
         students.forEach(s => {
-            if (entries[s.ID]) {
-                s.Entry_Status = entries[s.ID].Entry_Status;
-                s.Timestamp = entries[s.ID].Timestamp;
+            if (entries[s.Hash_Code]) {
+                s.Entry_Status = entries[s.Hash_Code].Entry_Status;
+                s.Timestamp = entries[s.Hash_Code].Timestamp;
             }
         });
         const lastSave = localStorage.getItem('navratri_last_save');
@@ -53,9 +66,13 @@ async function loadExcel() {
         s.Name = s.Name || s.name || '';
         s.Year = s.Year || s.year || '';
         s.Entry_Status = s.Entry_Status || '';
+        
+        // Generate hash code based on ID + Name
+        const hashInput = s.ID + s.Name;
+        s.Hash_Code = generateHash(hashInput);
     });
     populateTable();
-    console.log("Loaded students:", students); // Debug
+    console.log("Loaded students with hash codes:", students); // Debug
 }
 
 document.getElementById('loadExcelBtn').addEventListener('click', loadExcel);
@@ -192,21 +209,22 @@ document.getElementById('generatePDFBtn').addEventListener('click', async functi
             
             while (retries > 0 && !qrDataUrl) {
                 try {
-                    qrDataUrl = await generateQRDataURL(String(s.ID));
+                    // Use Hash_Code for QR generation instead of ID
+                    qrDataUrl = await generateQRDataURL(String(s.Hash_Code));
                     
                     // Stricter validation
                     if (!qrDataUrl || !qrDataUrl.startsWith('data:image/png') || qrDataUrl.length < 1000) {
                         throw new Error('Invalid QR data');
                     }
                     
-                    console.log(`✓ Generated QR for ${s.Name} (${s.ID}), size: ${qrDataUrl.length}`);
+                    console.log(`✓ Generated QR for ${s.Name} (Hash: ${s.Hash_Code}), size: ${qrDataUrl.length}`);
                 } catch (err) {
                     retries--;
-                    console.log(`Retry generating QR for ${s.ID}, attempts left: ${retries}`);
+                    console.log(`Retry generating QR for ${s.Hash_Code}, attempts left: ${retries}`);
                     if (retries > 0) {
                         await new Promise(resolve => setTimeout(resolve, 800));
                     } else {
-                        console.error("Failed to generate QR for", s.ID, err);
+                        console.error("Failed to generate QR for", s.Hash_Code, err);
                         failedStudents.push(`${s.Name} (${s.ID})`);
                     }
                 }
@@ -221,13 +239,14 @@ document.getElementById('generatePDFBtn').addEventListener('click', async functi
             doc.text(`Student: ${s.Name}`, 20, 20);
             doc.text(`ID: ${s.ID}`, 20, 30);
             doc.text(`Year: ${s.Year}`, 20, 40);
+            doc.text(`Hash: ${s.Hash_Code}`, 20, 50);
 
             // Add QR code image
             try {
-                doc.addImage(qrDataUrl, 'PNG', 20, 50, 60, 60, `qr_${s.ID}`, 'SLOW');
+                doc.addImage(qrDataUrl, 'PNG', 20, 60, 60, 60, `qr_${s.Hash_Code}`, 'SLOW');
                 successCount++;
             } catch (err) {
-                console.error(`Failed to add image for ${s.ID}:`, err);
+                console.error(`Failed to add image for ${s.Hash_Code}:`, err);
                 failedStudents.push(`${s.Name} (${s.ID})`);
             }
 
@@ -266,7 +285,8 @@ function populateTable(filter = '') {
         const searchLower = filter.toLowerCase();
         return String(s.ID).toLowerCase().includes(searchLower) ||
                String(s.Name).toLowerCase().includes(searchLower) ||
-               String(s.Year).toLowerCase().includes(searchLower);
+               String(s.Year).toLowerCase().includes(searchLower) ||
+               String(s.Hash_Code).toLowerCase().includes(searchLower);
     });
     
     filteredStudents.forEach(s => {
@@ -274,6 +294,7 @@ function populateTable(filter = '') {
         tr.className = s.Entry_Status === 'Entered' ? 'entered' : '';
         tr.innerHTML = `
             <td>${s.ID}</td>
+            <td>${s.Hash_Code}</td>
             <td>${s.Name}</td>
             <td>${s.Year}</td>
             <td>${s.Entry_Status || '-'}</td>
@@ -381,7 +402,7 @@ function handleScan(data) {
     console.log("=== SCAN DEBUG ===");
     console.log("Raw data:", data);
     console.log("Processed scannedData:", scannedData);
-    console.log("All Student IDs:", students.map(s => `"${s.ID}"`));
+    console.log("All Student Hash Codes:", students.map(s => `"${s.Hash_Code}"`));
     console.log("==================");
     
     // Check if we got empty data
@@ -394,29 +415,22 @@ function handleScan(data) {
         return;
     }
     
-    // Try multiple matching strategies
+    // Try multiple matching strategies using Hash_Code
     let student = null;
     
-    // Strategy 1: Exact match
-    student = students.find(s => String(s.ID).trim() === scannedData);
+    // Strategy 1: Exact hash match
+    student = students.find(s => String(s.Hash_Code).trim() === scannedData);
     
-    // Strategy 2: Case-insensitive match
+    // Strategy 2: Case-insensitive hash match
     if (!student) {
         student = students.find(s => 
-            String(s.ID).trim().toLowerCase() === scannedData.toLowerCase()
+            String(s.Hash_Code).trim().toLowerCase() === scannedData.toLowerCase()
         );
     }
     
-    // Strategy 3: Extract numbers only
+    // Strategy 3: Check if scanned data contains the hash
     if (!student) {
-        const numbersOnly = scannedData.replace(/\D/g, '');
-        console.log("Trying numbers only:", numbersOnly);
-        student = students.find(s => String(s.ID).trim() === numbersOnly);
-    }
-    
-    // Strategy 4: Check if scanned data contains the ID
-    if (!student) {
-        student = students.find(s => scannedData.includes(String(s.ID).trim()));
+        student = students.find(s => scannedData.includes(String(s.Hash_Code).trim()));
     }
     
     const statusDiv = document.getElementById('status');
@@ -442,9 +456,7 @@ function handleScan(data) {
         statusDiv.style.fontSize = '22px';
         playBeep(true);
         populateTable();
-        
-        // Update in Google Sheets
-        updateEntryStatus(student.ID, student.Name, 'Entered', student.Timestamp);
+        saveEntriesToStorage();
     }
 }
 
@@ -488,37 +500,8 @@ document.getElementById('downloadBtn').addEventListener('click', function() {
     alert(`Downloaded entry log with ${enteredStudents.length} entries!`);
 });
 
-// Clear all data
-document.getElementById('clearDataBtn').addEventListener('click', async function() {
-    if (confirm('⚠️ WARNING!\n\nThis will delete ALL entry records from Google Sheets permanently!\n\nAre you sure you want to continue?')) {
-        if (confirm('This action cannot be undone!\n\nClick OK to confirm deletion.')) {
-            try {
-                const response = await fetch(GOOGLE_SHEETS_URL, {
-                    method: 'POST',
-                    mode: 'no-cors',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        action: 'clearAll'
-                    })
-                });
-                
-                students.forEach(s => {
-                    s.Entry_Status = '';
-                    s.Timestamp = '';
-                });
-                populateTable();
-                alert('All entry data has been cleared from Google Sheets!');
-            } catch (error) {
-                alert('Error clearing data: ' + error.message);
-            }
-        }
-    }
-});
-
 // Test QR functionality
-document.getElementById('testQRBtn').addEventListener('click', function() {
+document.getElementById('testQRBtn')?.addEventListener('click', function() {
     if (!students.length) {
         alert("Load Excel first!");
         return;
@@ -530,10 +513,10 @@ document.getElementById('testQRBtn').addEventListener('click', function() {
     // Clear previous QR
     qrDiv.innerHTML = '';
     
-    // Generate test QR with first student's ID
+    // Generate test QR with first student's Hash_Code
     const testStudent = students[0];
     new QRCode(qrDiv, {
-        text: String(testStudent.ID),
+        text: String(testStudent.Hash_Code),
         width: 200,
         height: 200,
         colorDark: "#000000",
@@ -544,6 +527,6 @@ document.getElementById('testQRBtn').addEventListener('click', function() {
     container.style.display = 'block';
 });
 
-document.getElementById('closeTestQR').addEventListener('click', function() {
+document.getElementById('closeTestQR')?.addEventListener('click', function() {
     document.getElementById('testQRContainer').style.display = 'none';
 });

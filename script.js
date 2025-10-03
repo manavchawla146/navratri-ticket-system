@@ -277,7 +277,7 @@ document.getElementById('status').addEventListener('click', function() {
         this.innerText = "Point camera at QR code";
         this.style.color = 'white';
         this.style.fontSize = '18px';
-        lastScanTime = 0; // Reset cooldown
+        lastScanTime = 0; // Reset cooldown - ready to scan next person
     }
 });
 

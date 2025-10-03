@@ -2,33 +2,44 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Navratri Entry System</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <h1>Navratri Entry System</h1>
 
-    <button id="loadExcelBtn">Load Excel</button>
-    <button id="generatePDFBtn">Generate QR PDF</button>
-    <button id="startScanBtn">Start Scanning</button>
-    <button id="downloadBtn">Download Entry Log</button>
-
-    <div id="scanner">
-        <video id="preview"></video>
+    <div class="button-container">
+        <button id="loadExcelBtn">Load Excel</button>
+        <button id="generatePDFBtn">Generate QR PDF</button>
+        <button id="startScanBtn">Start Scanning</button>
+        <button id="downloadBtn">Download Entry Log</button>
     </div>
-    <div id="status"></div>
 
-    <table id="entryTable">
-        <thead>
-            <tr>
-                <th>ID</th>
-                <th>Name</th>
-                <th>Year</th>
-                <th>Entry Status</th>
-            </tr>
-        </thead>
-        <tbody></tbody>
-    </table>
+    <div id="scanner" style="display: none;">
+        <div id="scannerOverlay">
+            <button id="closeScanBtn">✕ Close Scanner</button>
+            <video id="preview"></video>
+            <div id="status"></div>
+        </div>
+    </div>
+
+    <div id="tableContainer">
+        <table id="entryTable">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Year</th>
+                    <th>Entry Status</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+
+    <!-- Hidden file input for Excel -->
+    <input type="file" id="excelFileInput" accept=".xlsx,.xls" style="display:none">
 
     <!-- Libraries -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>

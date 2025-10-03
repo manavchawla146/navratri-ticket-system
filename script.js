@@ -8,7 +8,7 @@ let lastSyncTime = 0;
 let isSyncing = false;
 
 // Google Sheets URL
-const GOOGLE_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbw7EDP-TN-rJYKHjxVA3rVfFrjJcvLodDIljQx9KOHWI8AWXjiyU2N42ZKQupTLJdurkQ/exec';
+const GOOGLE_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbxKDEGUr9uCd3ZlU4SMvPI6v7u8N8Dud1suJPCaJuYv9dqMemv3HZVJo375UKF-VSNYcw/exec';
 
 // Simple hash function to generate hash from string
 function generateHash(str) {
@@ -51,8 +51,8 @@ async function loadExcel(silent = false) {
             updateSyncStatus('Syncing...', false);
         }
 
-        // Fetch data from Google Sheets - request ALL data
-        const response = await fetch(GOOGLE_SHEETS_URL + '?action=getData&limit=all');
+        // Fetch data from Google Sheets
+        const response = await fetch(GOOGLE_SHEETS_URL + '?action=getData');
         const data = await response.json();
         
         if (data.status === 'success') {
@@ -77,7 +77,7 @@ async function loadExcel(silent = false) {
             if (!silent) {
                 alert(`Loaded ${students.length} students from Google Sheets!\nCurrent entries: ${enteredCount}`);
             } else {
-                updateSyncStatus(`✓ ${enteredCount} Entered | Total: ${students.length}`, false);
+                updateSyncStatus(`âœ“ ${enteredCount} Entered | Total: ${students.length}`, false);
             }
         } else {
             throw new Error(data.message || 'Failed to load data');
@@ -94,7 +94,7 @@ async function loadExcel(silent = false) {
             document.getElementById('loadExcelBtn').disabled = false;
             document.getElementById('loadExcelBtn').innerText = 'Load Excel';
         } else {
-            updateSyncStatus('✗ Sync failed', true);
+            updateSyncStatus('âœ— Sync failed', true);
         }
     } finally {
         isSyncing = false;
@@ -158,18 +158,7 @@ async function updateEntryStatus(id, name, status, timestamp) {
     }
 }
 
-// Check if device is mobile
-function isMobileDevice() {
-    return window.innerWidth <= 768; // Same breakpoint as in CSS
-}
-
-document.getElementById('loadExcelBtn').addEventListener('click', () => {
-    if (isMobileDevice()) {
-        alert('This feature is only available on desktop devices.');
-        return;
-    }
-    loadExcel(false);
-});
+document.getElementById('loadExcelBtn').addEventListener('click', () => loadExcel(false));
 
 // Auto-load data when page loads
 window.addEventListener('DOMContentLoaded', async () => {
@@ -280,20 +269,39 @@ function generateQRDataURL(text) {
             });
         } catch (error) {
             reject(error);
+        }
+    });
+}
+
 // Generate single PDF with all students (separate pages)
 document.getElementById('generatePDFBtn').addEventListener('click', async function() {
-    if (isMobileDevice()) {
-        alert('This feature is only available on desktop devices.');
-        return;
-    }
-addEventListener('click', async function() {
     if (!students.length) {
         alert("Load Excel first!");
         return;
     }
 
     this.disabled = true;
-on
+    this.innerText = "Generating...";
+
+    try {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        let successCount = 0;
+        let failedStudents = [];
+
+        for (let i = 0; i < students.length; i++) {
+            const s = students[i];
+            
+            // Show progress
+            this.innerText = `Generating ${i + 1}/${students.length}`;
+            
+            // Retry mechanism for QR generation
+            let qrDataUrl = null;
+            let retries = 5; // Increased retries for mobile
+            
+            while (retries > 0 && !qrDataUrl) {
+                try {
+                    // Use Hash_Code for QR generation
                     qrDataUrl = await generateQRDataURL(String(s.Hash_Code));
                     
                     // Stricter validation

@@ -163,7 +163,13 @@ function isMobileDevice() {
     return window.innerWidth <= 768; // Same breakpoint as in CSS
 }
 
-document.getElementById('loadExceldocument.getElementById('loadExcelBtn').addEventListener('click', () => loadExcel(false));
+document.getElementById('loadExcelBtn').addEventListener('click', () => {
+    if (isMobileDevice()) {
+        alert('This feature is only available on desktop devices.');
+        return;
+    }
+    loadExcel(false);
+});
 
 // Auto-load data when page loads
 window.addEventListener('DOMContentLoaded', async () => {
@@ -274,12 +280,13 @@ function generateQRDataURL(text) {
             });
         } catch (error) {
             reject(error);
-        }
-    });
-}
-
 // Generate single PDF with all students (separate pages)
 document.getElementById('generatePDFBtn').addEventListener('click', async function() {
+    if (isMobileDevice()) {
+        alert('This feature is only available on desktop devices.');
+        return;
+    }
+addEventListener('click', async function() {
     if (!students.length) {
         alert("Load Excel first!");
         return;

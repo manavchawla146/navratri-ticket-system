@@ -66,67 +66,44 @@ function generateQRDataURL(text) {
         try {
             // Create a temporary container
             const container = document.createElement('div');
-            container.style.position = 'absolute';
+            container.style.position = 'fixed';
             container.style.top = '-9999px';
             container.style.left = '-9999px';
-            container.style.width = '300px';
-            container.style.height = '300px';
             document.body.appendChild(container);
 
-            // Clear any previous content
-            container.innerHTML = '';
-
-            // Generate QR code with higher quality settings
+            // Generate QR code
             const qr = new QRCode(container, {
                 text: String(text),
-                width: 256,
-                height: 256,
+                width: 200,
+                height: 200,
                 colorDark: "#000000",
                 colorLight: "#ffffff",
                 correctLevel: QRCode.CorrectLevel.H
             });
 
-            // Longer wait time for mobile devices to render properly
+            // Wait for image to be generated
             setTimeout(() => {
                 try {
                     const canvas = container.querySelector('canvas');
                     const img = container.querySelector('img');
                     
                     if (canvas) {
-                        // Force canvas to complete rendering
-                        const ctx = canvas.getContext('2d');
-                        ctx.drawImage(canvas, 0, 0);
-                        
-                        const dataUrl = canvas.toDataURL('image/png', 1.0);
+                        const dataUrl = canvas.toDataURL('image/png');
                         document.body.removeChild(container);
-                        
-                        // Validate the data URL
-                        if (dataUrl && dataUrl.length > 100) {
-                            resolve(dataUrl);
-                        } else {
-                            reject(new Error('Invalid QR code data'));
-                        }
+                        resolve(dataUrl);
                     } else if (img && img.src) {
                         const dataUrl = img.src;
                         document.body.removeChild(container);
-                        
-                        // Validate the data URL
-                        if (dataUrl && dataUrl.length > 100) {
-                            resolve(dataUrl);
-                        } else {
-                            reject(new Error('Invalid QR code data'));
-                        }
+                        resolve(dataUrl);
                     } else {
                         document.body.removeChild(container);
                         reject(new Error('QR code generation failed'));
                     }
                 } catch (err) {
-                    if (container.parentNode) {
-                        document.body.removeChild(container);
-                    }
+                    document.body.removeChild(container);
                     reject(err);
                 }
-            }, 800); // Increased wait time for mobile
+            }, 300);
         } catch (error) {
             reject(error);
         }
@@ -141,11 +118,13 @@ document.getElementById('generatePDFBtn').addEventListener('click', async functi
     }
 
     this.disabled = true;
+    const originalText = this.innerText;
     this.innerText = "Generating...";
 
     try {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
+        let isFirstPage = true;
 
         for (let i = 0; i < students.length; i++) {
             const s = students[i];
@@ -153,56 +132,49 @@ document.getElementById('generatePDFBtn').addEventListener('click', async functi
             // Show progress
             this.innerText = `Generating ${i + 1}/${students.length}`;
             
-            // Retry mechanism for QR generation
-            let qrDataUrl = null;
-            let retries = 3;
+            // Give UI time to update
+            await new Promise(resolve => setTimeout(resolve, 100));
             
-            while (retries > 0 && !qrDataUrl) {
-                try {
-                    qrDataUrl = await generateQRDataURL(String(s.ID));
-                    
-                    // Validate QR data
-                    if (!qrDataUrl || qrDataUrl.length < 100) {
-                        throw new Error('Invalid QR data');
-                    }
-                } catch (err) {
-                    retries--;
-                    if (retries > 0) {
-                        console.log(`Retry generating QR for ${s.ID}, attempts left: ${retries}`);
-                        await new Promise(resolve => setTimeout(resolve, 500));
-                    } else {
-                        console.error("Failed to generate QR for", s.ID, err);
-                    }
+            try {
+                const qrDataUrl = await generateQRDataURL(String(s.ID));
+                
+                if (!qrDataUrl) {
+                    console.error("Failed to generate QR for ID:", s.ID);
+                    continue;
                 }
+
+                // Add new page if not first
+                if (!isFirstPage) {
+                    doc.addPage();
+                }
+                isFirstPage = false;
+
+                // Add text
+                doc.setFontSize(18);
+                doc.text(`Student: ${s.Name}`, 20, 20);
+                doc.setFontSize(14);
+                doc.text(`ID: ${s.ID}`, 20, 35);
+                doc.text(`Year: ${s.Year}`, 20, 45);
+
+                // Add QR code image
+                doc.addImage(qrDataUrl, 'PNG', 20, 55, 60, 60);
+                
+            } catch (err) {
+                console.error("Error processing student", s.ID, err);
             }
-            
-            if (!qrDataUrl) {
-                alert(`Failed to generate QR for ${s.Name} (ID: ${s.ID}). Skipping...`);
-                continue;
-            }
-
-            doc.setFontSize(16);
-            doc.text(`Student: ${s.Name}`, 20, 20);
-            doc.text(`ID: ${s.ID}`, 20, 30);
-            doc.text(`Year: ${s.Year}`, 20, 40);
-
-            // Add QR code image with higher quality
-            doc.addImage(qrDataUrl, 'PNG', 20, 50, 60, 60, undefined, 'FAST');
-
-            if (i < students.length - 1) doc.addPage();
-            
-            // Give browser more time on mobile
-            await new Promise(resolve => setTimeout(resolve, 150));
         }
 
-        doc.save("All_Student_QR.pdf");
-        alert("PDF generated successfully!");
+        // Save PDF
+        const filename = `Student_QR_Codes_${new Date().getTime()}.pdf`;
+        doc.save(filename);
+        alert(`PDF generated successfully!\n${students.length} QR codes created.`);
+        
     } catch (error) {
         alert("Error generating PDF: " + error.message);
         console.error(error);
     } finally {
         this.disabled = false;
-        this.innerText = "Generate QR PDF";
+        this.innerText = originalText;
     }
 });
 
@@ -305,7 +277,7 @@ document.getElementById('status').addEventListener('click', function() {
         this.innerText = "Point camera at QR code";
         this.style.color = 'white';
         this.style.fontSize = '18px';
-        lastScanTime = 0; // Reset cooldown
+        lastScanTime = 0; // Reset cooldown - ready to scan next person
     }
 });
 
@@ -467,20 +439,18 @@ document.getElementById('clearDataBtn').addEventListener('click', async function
     }
 });
 
-// Test QR functionality
+// Test QR Generation
 document.getElementById('testQRBtn').addEventListener('click', function() {
     if (!students.length) {
         alert("Load Excel first!");
         return;
     }
     
-    const container = document.getElementById('testQRContainer');
+    const testContainer = document.getElementById('testQRContainer');
     const qrDiv = document.getElementById('testQRCode');
-    
-    // Clear previous QR
     qrDiv.innerHTML = '';
     
-    // Generate test QR with first student's ID
+    // Generate QR for first student
     const testStudent = students[0];
     new QRCode(qrDiv, {
         text: String(testStudent.ID),
@@ -491,7 +461,7 @@ document.getElementById('testQRBtn').addEventListener('click', function() {
         correctLevel: QRCode.CorrectLevel.H
     });
     
-    container.style.display = 'block';
+    testContainer.style.display = 'block';
 });
 
 document.getElementById('closeTestQR').addEventListener('click', function() {

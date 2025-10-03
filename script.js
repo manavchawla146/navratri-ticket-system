@@ -31,7 +31,7 @@ function generateQRDataURL(text) {
         document.body.appendChild(tempDiv);
 
         new QRCode(tempDiv, {
-            text: text,
+            text: String(text),
             width: 150,
             height: 150,
             correctLevel: QRCode.CorrectLevel.H
@@ -39,9 +39,13 @@ function generateQRDataURL(text) {
 
         setTimeout(() => {
             const img = tempDiv.querySelector('img');
-            if (img) resolve(img.src);
+            if (img) {
+                resolve(img.src);
+            } else {
+                resolve(null);
+            }
             document.body.removeChild(tempDiv);
-        }, 100);
+        }, 200);
     });
 }
 
@@ -55,27 +59,45 @@ document.getElementById('generatePDFBtn').addEventListener('click', async functi
     this.disabled = true;
     this.innerText = "Generating...";
 
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
+    try {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
 
-    for (let i = 0; i < students.length; i++) {
-        const s = students[i];
-        const qrDataUrl = await generateQRDataURL(s.ID);
+        for (let i = 0; i < students.length; i++) {
+            const s = students[i];
+            
+            // Show progress
+            this.innerText = `Generating ${i + 1}/${students.length}`;
+            
+            const qrDataUrl = await generateQRDataURL(String(s.ID));
+            
+            if (!qrDataUrl) {
+                console.error("Failed to generate QR for", s.ID);
+                continue;
+            }
 
-        doc.setFontSize(16);
-        doc.text(`Student: ${s.Name}`, 20, 20);
-        doc.text(`ID: ${s.ID}`, 20, 30);
-        doc.text(`Year: ${s.Year}`, 20, 40);
+            doc.setFontSize(16);
+            doc.text(`Student: ${s.Name}`, 20, 20);
+            doc.text(`ID: ${s.ID}`, 20, 30);
+            doc.text(`Year: ${s.Year}`, 20, 40);
 
-        doc.addImage(qrDataUrl, 'PNG', 20, 50, 50, 50);
+            doc.addImage(qrDataUrl, 'PNG', 20, 50, 50, 50);
 
-        if (i < students.length - 1) doc.addPage();
+            if (i < students.length - 1) doc.addPage();
+            
+            // Give browser time to breathe
+            await new Promise(resolve => setTimeout(resolve, 50));
+        }
+
+        doc.save("All_Student_QR.pdf");
+        alert("PDF generated successfully!");
+    } catch (error) {
+        alert("Error generating PDF: " + error.message);
+        console.error(error);
+    } finally {
+        this.disabled = false;
+        this.innerText = "Generate QR PDF";
     }
-
-    doc.save("All_Student_QR.pdf");
-    
-    this.disabled = false;
-    this.innerText = "Generate QR PDF";
 });
 
 // Populate table
@@ -158,15 +180,24 @@ function handleScan(data) {
     if (!isScanning) return;
     
     const scannedID = String(data).trim();
-    console.log("Scanned:", scannedID); // Debug log
-    console.log("Available IDs:", students.map(s => String(s.ID).trim())); // Debug log
-    const student = students.find(s => String(s.ID).trim() === scannedID);
+    console.log("Scanned Data:", scannedID);
+    
+    // Try to find student with exact match first
+    let student = students.find(s => String(s.ID).trim() === scannedID);
+    
+    // If not found, try to extract just numbers from scanned data
+    if (!student) {
+        const numbersOnly = scannedID.replace(/\D/g, '');
+        console.log("Trying numbers only:", numbersOnly);
+        student = students.find(s => String(s.ID).trim() === numbersOnly);
+    }
+    
     const statusDiv = document.getElementById('status');
 
     if (!student) {
-        statusDiv.innerText = "❌ Invalid QR Code!";
+        statusDiv.innerText = `❌ Invalid QR Code!\nScanned: ${scannedID}`;
         statusDiv.style.color = 'red';
-        statusDiv.style.fontSize = '24px';
+        statusDiv.style.fontSize = '20px';
         playBeep(false);
         
         setTimeout(() => {
@@ -175,7 +206,7 @@ function handleScan(data) {
                 statusDiv.style.color = 'white';
                 statusDiv.style.fontSize = '18px';
             }
-        }, 2000);
+        }, 3000);
         return;
     }
 

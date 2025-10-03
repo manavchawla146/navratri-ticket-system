@@ -116,6 +116,26 @@ button:disabled {
     text-align: center;
 }
 
+#searchContainer {
+    margin: 20px auto;
+    max-width: 90%;
+    text-align: center;
+}
+
+#searchBox {
+    width: 100%;
+    max-width: 500px;
+    padding: 12px 20px;
+    font-size: 16px;
+    border: 2px solid #999;
+    border-radius: 4px;
+    outline: none;
+}
+
+#searchBox:focus {
+    border-color: #333;
+}
+
 #tableContainer {
     margin: 20px auto;
     max-width: 90%;
@@ -165,6 +185,11 @@ tbody tr.entered:hover {
         font-size: 14px;
         padding: 10px 15px;
         min-width: 120px;
+    }
+    
+    #searchBox {
+        font-size: 14px;
+        padding: 10px 15px;
     }
     
     th, td {

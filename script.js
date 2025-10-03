@@ -103,10 +103,19 @@ document.getElementById('generatePDFBtn').addEventListener('click', async functi
 });
 
 // Populate table
-function populateTable() {
+function populateTable(filter = '') {
     const tbody = document.querySelector('#entryTable tbody');
     tbody.innerHTML = '';
-    students.forEach(s => {
+    
+    const filteredStudents = students.filter(s => {
+        if (!filter) return true;
+        const searchLower = filter.toLowerCase();
+        return String(s.ID).toLowerCase().includes(searchLower) ||
+               String(s.Name).toLowerCase().includes(searchLower) ||
+               String(s.Year).toLowerCase().includes(searchLower);
+    });
+    
+    filteredStudents.forEach(s => {
         const tr = document.createElement('tr');
         tr.className = s.Entry_Status === 'Entered' ? 'entered' : '';
         tr.innerHTML = `
@@ -118,6 +127,11 @@ function populateTable() {
         tbody.appendChild(tr);
     });
 }
+
+// Search functionality
+document.getElementById('searchBox').addEventListener('input', function(e) {
+    populateTable(e.target.value);
+});
 
 // Start scanning
 document.getElementById('startScanBtn').addEventListener('click', async function() {
@@ -302,8 +316,16 @@ document.getElementById('downloadBtn').addEventListener('click', function() {
         return;
     }
 
-    const csv = Papa.unparse(students);
+    // Filter only students who have entered
+    const enteredStudents = students.filter(s => s.Entry_Status === 'Entered');
+    
+    if (enteredStudents.length === 0) {
+        alert("No entries yet! No one has been marked as entered.");
+        return;
+    }
+
+    const csv = Papa.unparse(enteredStudents);
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     saveAs(blob, "entry_log.csv");
-    alert("Entry log downloaded!");
+    alert(`Downloaded entry log with ${enteredStudents.length} entries!`);
 });

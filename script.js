@@ -4,6 +4,9 @@ let isScanning = false;
 let lastScanTime = 0;
 let scanCooldown = 3000; // 3 seconds between scans
 
+// Google Sheets URL
+const GOOGLE_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbxUcZevlN1YSdLbm8F5ZzLbqDmdF2uwxd4JYysde_Ez3CcBV9qZl7W6MnqkAMPwydCS_A/exec';
+
 // Simple hash function to generate hash from string
 function generateHash(str) {
     let hash = 0;
@@ -16,63 +19,72 @@ function generateHash(str) {
     return Math.abs(hash).toString(16).toUpperCase().padStart(8, '0');
 }
 
-// Save entries to localStorage
-function saveEntriesToStorage() {
-    const entries = {};
-    students.forEach(s => {
-        if (s.Entry_Status === 'Entered') {
-            entries[s.Hash_Code] = {
-                ID: s.ID,
-                Name: s.Name,
-                Year: s.Year,
-                Entry_Status: s.Entry_Status,
-                Timestamp: s.Timestamp || new Date().toISOString()
-            };
-        }
-    });
-    localStorage.setItem('navratri_entries', JSON.stringify(entries));
-    localStorage.setItem('navratri_last_save', new Date().toISOString());
-}
-
-// Load entries from localStorage
-function loadEntriesFromStorage() {
-    const savedEntries = localStorage.getItem('navratri_entries');
-    if (savedEntries) {
-        const entries = JSON.parse(savedEntries);
-        students.forEach(s => {
-            if (entries[s.Hash_Code]) {
-                s.Entry_Status = entries[s.Hash_Code].Entry_Status;
-                s.Timestamp = entries[s.Hash_Code].Timestamp;
-            }
-        });
-        const lastSave = localStorage.getItem('navratri_last_save');
-        console.log('Loaded entries from storage. Last save:', lastSave);
-        return Object.keys(entries).length;
-    }
-    return 0;
-}
-
-// Load Excel file from same folder
+// Load data from Google Sheets
 async function loadExcel() {
-    const response = await fetch('students.xlsx');
-    const arrayBuffer = await response.arrayBuffer();
-    const workbook = XLSX.read(arrayBuffer, { type: 'array' });
-    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-    const data = XLSX.utils.sheet_to_json(firstSheet);
-    students = data;
-    students.forEach(s => {
-        // Normalize ID - remove any spaces, convert to string
-        s.ID = String(s.ID || s.id || s.Id).trim();
-        s.Name = s.Name || s.name || '';
-        s.Year = s.Year || s.year || '';
-        s.Entry_Status = s.Entry_Status || '';
+    try {
+        const loadBtn = document.getElementById('loadExcelBtn');
+        loadBtn.disabled = true;
+        loadBtn.innerText = 'Loading...';
+
+        // Fetch data from Google Sheets
+        const response = await fetch(GOOGLE_SHEETS_URL + '?action=getData');
+        const data = await response.json();
         
-        // Generate hash code based on ID + Name
-        const hashInput = s.ID + s.Name;
-        s.Hash_Code = generateHash(hashInput);
-    });
-    populateTable();
-    console.log("Loaded students with hash codes:", students); // Debug
+        if (data.status === 'success') {
+            students = data.data;
+            
+            // Process each student
+            students.forEach(s => {
+                // Normalize all fields
+                s.ID = String(s.ID || '').trim();
+                s.Hash_Code = String(s.Hash_Code || '').trim();
+                s.Name = String(s.Name || '').trim();
+                s.Year = String(s.Year || '').trim();
+                s.Entry_Status = String(s.Entry_Status || '').trim();
+                s.Timestamp = String(s.Timestamp || '').trim();
+            });
+            
+            populateTable();
+            console.log("Loaded students from Google Sheets:", students);
+            alert(`Loaded ${students.length} students from Google Sheets!`);
+        } else {
+            throw new Error(data.message || 'Failed to load data');
+        }
+        
+        loadBtn.disabled = false;
+        loadBtn.innerText = 'Load Excel';
+    } catch (error) {
+        console.error('Error loading from Google Sheets:', error);
+        alert('Error loading data from Google Sheets: ' + error.message);
+        document.getElementById('loadExcelBtn').disabled = false;
+        document.getElementById('loadExcelBtn').innerText = 'Load Excel';
+    }
+}
+
+// Update entry status in Google Sheets
+async function updateEntryStatus(id, name, status, timestamp) {
+    try {
+        const response = await fetch(GOOGLE_SHEETS_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                action: 'updateEntry',
+                id: id,
+                name: name,
+                status: status,
+                timestamp: timestamp
+            })
+        });
+        
+        console.log('Entry updated in Google Sheets:', { id, name, status, timestamp });
+        return true;
+    } catch (error) {
+        console.error('Error updating Google Sheets:', error);
+        return false;
+    }
 }
 
 document.getElementById('loadExcelBtn').addEventListener('click', loadExcel);
@@ -209,7 +221,7 @@ document.getElementById('generatePDFBtn').addEventListener('click', async functi
             
             while (retries > 0 && !qrDataUrl) {
                 try {
-                    // Use Hash_Code for QR generation instead of ID
+                    // Use Hash_Code for QR generation
                     qrDataUrl = await generateQRDataURL(String(s.Hash_Code));
                     
                     // Stricter validation
@@ -217,7 +229,7 @@ document.getElementById('generatePDFBtn').addEventListener('click', async functi
                         throw new Error('Invalid QR data');
                     }
                     
-                    console.log(`✓ Generated QR for ${s.Name} (Hash: ${s.Hash_Code}), size: ${qrDataUrl.length}`);
+                    console.log(`Generated QR for ${s.Name} (Hash: ${s.Hash_Code}), size: ${qrDataUrl.length}`);
                 } catch (err) {
                     retries--;
                     console.log(`Retry generating QR for ${s.Hash_Code}, attempts left: ${retries}`);
@@ -408,7 +420,7 @@ function handleScan(data) {
     // Check if we got empty data
     if (!scannedData || scannedData === '') {
         const statusDiv = document.getElementById('status');
-        statusDiv.innerText = `❌ Empty QR Data!\nQR code may be corrupted\n\nTap to continue...`;
+        statusDiv.innerText = `Empty QR Data!\nQR code may be corrupted\n\nTap to continue...`;
         statusDiv.style.color = 'red';
         statusDiv.style.fontSize = '18px';
         playBeep(false);
@@ -436,7 +448,7 @@ function handleScan(data) {
     const statusDiv = document.getElementById('status');
 
     if (!student) {
-        statusDiv.innerText = `❌ Invalid QR Code!\nScanned: "${scannedData}"\n\nTap to continue...`;
+        statusDiv.innerText = `Invalid QR Code!\nScanned: "${scannedData}"\n\nTap to continue...`;
         statusDiv.style.color = 'red';
         statusDiv.style.fontSize = '18px';
         playBeep(false);
@@ -444,19 +456,21 @@ function handleScan(data) {
     }
 
     if (student.Entry_Status === 'Entered') {
-        statusDiv.innerText = `⚠️ ${student.Name}\n(ID: ${student.ID})\nAlready Entered!\n\nTap to continue...`;
+        statusDiv.innerText = `${student.Name}\n(ID: ${student.ID})\nAlready Entered!\n\nTap to continue...`;
         statusDiv.style.color = 'orange';
         statusDiv.style.fontSize = '20px';
         playBeep(false);
     } else {
         student.Entry_Status = 'Entered';
         student.Timestamp = new Date().toISOString();
-        statusDiv.innerText = `✓ ${student.Name}\n(ID: ${student.ID})\nEntry Successful!\n\nTap to continue...`;
+        statusDiv.innerText = `${student.Name}\n(ID: ${student.ID})\nEntry Successful!\n\nTap to continue...`;
         statusDiv.style.color = '#00ff00';
         statusDiv.style.fontSize = '22px';
         playBeep(true);
         populateTable();
-        saveEntriesToStorage();
+        
+        // Update in Google Sheets
+        updateEntryStatus(student.ID, student.Name, 'Entered', student.Timestamp);
     }
 }
 
@@ -498,35 +512,4 @@ document.getElementById('downloadBtn').addEventListener('click', function() {
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     saveAs(blob, "entry_log.csv");
     alert(`Downloaded entry log with ${enteredStudents.length} entries!`);
-});
-
-// Test QR functionality
-document.getElementById('testQRBtn')?.addEventListener('click', function() {
-    if (!students.length) {
-        alert("Load Excel first!");
-        return;
-    }
-    
-    const container = document.getElementById('testQRContainer');
-    const qrDiv = document.getElementById('testQRCode');
-    
-    // Clear previous QR
-    qrDiv.innerHTML = '';
-    
-    // Generate test QR with first student's Hash_Code
-    const testStudent = students[0];
-    new QRCode(qrDiv, {
-        text: String(testStudent.Hash_Code),
-        width: 200,
-        height: 200,
-        colorDark: "#000000",
-        colorLight: "#ffffff",
-        correctLevel: QRCode.CorrectLevel.H
-    });
-    
-    container.style.display = 'block';
-});
-
-document.getElementById('closeTestQR')?.addEventListener('click', function() {
-    document.getElementById('testQRContainer').style.display = 'none';
 });

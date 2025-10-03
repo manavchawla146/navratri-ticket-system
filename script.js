@@ -8,7 +8,7 @@ let lastSyncTime = 0;
 let isSyncing = false;
 
 // Google Sheets URL
-const GOOGLE_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbxKDEGUr9uCd3ZlU4SMvPI6v7u8N8Dud1suJPCaJuYv9dqMemv3HZVJo375UKF-VSNYcw/exec';
+const GOOGLE_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbw7EDP-TN-rJYKHjxVA3rVfFrjJcvLodDIljQx9KOHWI8AWXjiyU2N42ZKQupTLJdurkQ/exec';
 
 // Simple hash function to generate hash from string
 function generateHash(str) {
@@ -51,8 +51,8 @@ async function loadExcel(silent = false) {
             updateSyncStatus('Syncing...', false);
         }
 
-        // Fetch data from Google Sheets
-        const response = await fetch(GOOGLE_SHEETS_URL + '?action=getData');
+        // Fetch data from Google Sheets - request ALL data
+        const response = await fetch(GOOGLE_SHEETS_URL + '?action=getData&limit=all');
         const data = await response.json();
         
         if (data.status === 'success') {

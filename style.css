@@ -174,6 +174,13 @@ tbody tr.entered:hover {
     background-color: #99ff99;
 }
 
+/* Hide desktop-only buttons on mobile */
+@media (max-width: 768px) {
+    .desktop-only {
+        display: none !important;
+    }
+}
+
 /* Mobile responsive */
 @media (max-width: 768px) {
     h1 {

@@ -77,7 +77,7 @@ async function loadExcel(silent = false) {
             if (!silent) {
                 alert(`Loaded ${students.length} students from Google Sheets!\nCurrent entries: ${enteredCount}`);
             } else {
-                updateSyncStatus(`âœ“ ${enteredCount} Entered | Total: ${students.length}`, false);
+                updateSyncStatus(`✓ ${enteredCount} Entered | Total: ${students.length}`, false);
             }
         } else {
             throw new Error(data.message || 'Failed to load data');
@@ -94,7 +94,7 @@ async function loadExcel(silent = false) {
             document.getElementById('loadExcelBtn').disabled = false;
             document.getElementById('loadExcelBtn').innerText = 'Load Excel';
         } else {
-            updateSyncStatus('âœ— Sync failed', true);
+            updateSyncStatus('✗ Sync failed', true);
         }
     } finally {
         isSyncing = false;

@@ -2,35 +2,20 @@ let students = [];
 let qrScanner;
 let isScanning = false;
 
-// Load Excel file
+// Load Excel file from same folder
 async function loadExcel() {
-    const fileInput = document.getElementById('excelFileInput');
-    fileInput.click();
+    const response = await fetch('students.xlsx');
+    const arrayBuffer = await response.arrayBuffer();
+    const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+    const data = XLSX.utils.sheet_to_json(firstSheet);
+    students = data;
+    students.forEach(s => {
+        s.ID = String(s.ID).trim();
+        s.Entry_Status = s.Entry_Status || '';
+    });
+    populateTable();
 }
-
-document.getElementById('excelFileInput').addEventListener('change', async function(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = function(event) {
-        const data = new Uint8Array(event.target.result);
-        const workbook = XLSX.read(data, { type: 'array' });
-        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-        const jsonData = XLSX.utils.sheet_to_json(firstSheet);
-        
-        students = jsonData.map(s => ({
-            ID: String(s.ID || s.id || s.Id).trim(),
-            Name: s.Name || s.name || '',
-            Year: s.Year || s.year || '',
-            Entry_Status: s.Entry_Status || ''
-        }));
-        
-        populateTable();
-        alert(`Loaded ${students.length} students successfully!`);
-    };
-    reader.readAsArrayBuffer(file);
-});
 
 document.getElementById('loadExcelBtn').addEventListener('click', loadExcel);
 
@@ -124,7 +109,7 @@ document.getElementById('startScanBtn').addEventListener('click', async function
         
         scannerDiv.style.display = 'flex';
         statusDiv.innerText = "Initializing camera...";
-        statusDiv.style.color = '#333';
+        statusDiv.style.color = 'white';
         
         if (qrScanner) {
             await qrScanner.start();
@@ -181,7 +166,7 @@ function handleScan(data) {
         setTimeout(() => {
             if (isScanning) {
                 statusDiv.innerText = "Point camera at QR code";
-                statusDiv.style.color = '#333';
+                statusDiv.style.color = 'white';
                 statusDiv.style.fontSize = '18px';
             }
         }, 2000);
@@ -197,7 +182,7 @@ function handleScan(data) {
         setTimeout(() => {
             if (isScanning) {
                 statusDiv.innerText = "Point camera at QR code";
-                statusDiv.style.color = '#333';
+                statusDiv.style.color = 'white';
                 statusDiv.style.fontSize = '18px';
             }
         }, 2000);
@@ -212,7 +197,7 @@ function handleScan(data) {
         setTimeout(() => {
             if (isScanning) {
                 statusDiv.innerText = "Point camera at QR code";
-                statusDiv.style.color = '#333';
+                statusDiv.style.color = 'white';
                 statusDiv.style.fontSize = '18px';
             }
         }, 2000);

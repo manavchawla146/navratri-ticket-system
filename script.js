@@ -4,6 +4,41 @@ let isScanning = false;
 let lastScanTime = 0;
 let scanCooldown = 3000; // 3 seconds between scans
 
+// Save entries to localStorage
+function saveEntriesToStorage() {
+    const entries = {};
+    students.forEach(s => {
+        if (s.Entry_Status === 'Entered') {
+            entries[s.ID] = {
+                Name: s.Name,
+                Year: s.Year,
+                Entry_Status: s.Entry_Status,
+                Timestamp: s.Timestamp || new Date().toISOString()
+            };
+        }
+    });
+    localStorage.setItem('navratri_entries', JSON.stringify(entries));
+    localStorage.setItem('navratri_last_save', new Date().toISOString());
+}
+
+// Load entries from localStorage
+function loadEntriesFromStorage() {
+    const savedEntries = localStorage.getItem('navratri_entries');
+    if (savedEntries) {
+        const entries = JSON.parse(savedEntries);
+        students.forEach(s => {
+            if (entries[s.ID]) {
+                s.Entry_Status = entries[s.ID].Entry_Status;
+                s.Timestamp = entries[s.ID].Timestamp;
+            }
+        });
+        const lastSave = localStorage.getItem('navratri_last_save');
+        console.log('Loaded entries from storage. Last save:', lastSave);
+        return Object.keys(entries).length;
+    }
+    return 0;
+}
+
 // Load Excel file from same folder
 async function loadExcel() {
     const response = await fetch('students.xlsx');
@@ -25,29 +60,76 @@ async function loadExcel() {
 
 document.getElementById('loadExcelBtn').addEventListener('click', loadExcel);
 
-// Helper: generate QR data URL using hidden DOM
+// Helper: generate QR data URL using canvas (more reliable)
 function generateQRDataURL(text) {
-    return new Promise((resolve) => {
-        const tempDiv = document.createElement('div');
-        tempDiv.style.display = 'none';
-        document.body.appendChild(tempDiv);
+    return new Promise((resolve, reject) => {
+        try {
+            // Create a temporary container
+            const container = document.createElement('div');
+            container.style.position = 'absolute';
+            container.style.top = '-9999px';
+            container.style.left = '-9999px';
+            container.style.width = '300px';
+            container.style.height = '300px';
+            document.body.appendChild(container);
 
-        new QRCode(tempDiv, {
-            text: String(text),
-            width: 150,
-            height: 150,
-            correctLevel: QRCode.CorrectLevel.H
-        });
+            // Clear any previous content
+            container.innerHTML = '';
 
-        setTimeout(() => {
-            const img = tempDiv.querySelector('img');
-            if (img) {
-                resolve(img.src);
-            } else {
-                resolve(null);
-            }
-            document.body.removeChild(tempDiv);
-        }, 200);
+            // Generate QR code with higher quality settings
+            const qr = new QRCode(container, {
+                text: String(text),
+                width: 256,
+                height: 256,
+                colorDark: "#000000",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.H
+            });
+
+            // Longer wait time for mobile devices to render properly
+            setTimeout(() => {
+                try {
+                    const canvas = container.querySelector('canvas');
+                    const img = container.querySelector('img');
+                    
+                    if (canvas) {
+                        // Force canvas to complete rendering
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(canvas, 0, 0);
+                        
+                        const dataUrl = canvas.toDataURL('image/png', 1.0);
+                        document.body.removeChild(container);
+                        
+                        // Validate the data URL
+                        if (dataUrl && dataUrl.length > 100) {
+                            resolve(dataUrl);
+                        } else {
+                            reject(new Error('Invalid QR code data'));
+                        }
+                    } else if (img && img.src) {
+                        const dataUrl = img.src;
+                        document.body.removeChild(container);
+                        
+                        // Validate the data URL
+                        if (dataUrl && dataUrl.length > 100) {
+                            resolve(dataUrl);
+                        } else {
+                            reject(new Error('Invalid QR code data'));
+                        }
+                    } else {
+                        document.body.removeChild(container);
+                        reject(new Error('QR code generation failed'));
+                    }
+                } catch (err) {
+                    if (container.parentNode) {
+                        document.body.removeChild(container);
+                    }
+                    reject(err);
+                }
+            }, 800); // Increased wait time for mobile
+        } catch (error) {
+            reject(error);
+        }
     });
 }
 
@@ -71,10 +153,31 @@ document.getElementById('generatePDFBtn').addEventListener('click', async functi
             // Show progress
             this.innerText = `Generating ${i + 1}/${students.length}`;
             
-            const qrDataUrl = await generateQRDataURL(String(s.ID));
+            // Retry mechanism for QR generation
+            let qrDataUrl = null;
+            let retries = 3;
+            
+            while (retries > 0 && !qrDataUrl) {
+                try {
+                    qrDataUrl = await generateQRDataURL(String(s.ID));
+                    
+                    // Validate QR data
+                    if (!qrDataUrl || qrDataUrl.length < 100) {
+                        throw new Error('Invalid QR data');
+                    }
+                } catch (err) {
+                    retries--;
+                    if (retries > 0) {
+                        console.log(`Retry generating QR for ${s.ID}, attempts left: ${retries}`);
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                    } else {
+                        console.error("Failed to generate QR for", s.ID, err);
+                    }
+                }
+            }
             
             if (!qrDataUrl) {
-                console.error("Failed to generate QR for", s.ID);
+                alert(`Failed to generate QR for ${s.Name} (ID: ${s.ID}). Skipping...`);
                 continue;
             }
 
@@ -83,12 +186,13 @@ document.getElementById('generatePDFBtn').addEventListener('click', async functi
             doc.text(`ID: ${s.ID}`, 20, 30);
             doc.text(`Year: ${s.Year}`, 20, 40);
 
-            doc.addImage(qrDataUrl, 'PNG', 20, 50, 50, 50);
+            // Add QR code image with higher quality
+            doc.addImage(qrDataUrl, 'PNG', 20, 50, 60, 60, undefined, 'FAST');
 
             if (i < students.length - 1) doc.addPage();
             
-            // Give browser time to breathe
-            await new Promise(resolve => setTimeout(resolve, 50));
+            // Give browser more time on mobile
+            await new Promise(resolve => setTimeout(resolve, 150));
         }
 
         doc.save("All_Student_QR.pdf");
@@ -282,11 +386,15 @@ function handleScan(data) {
         playBeep(false);
     } else {
         student.Entry_Status = 'Entered';
+        student.Timestamp = new Date().toISOString();
         statusDiv.innerText = `✓ ${student.Name}\n(ID: ${student.ID})\nEntry Successful!\n\nTap to continue...`;
         statusDiv.style.color = '#00ff00';
         statusDiv.style.fontSize = '22px';
         playBeep(true);
         populateTable();
+        
+        // Update in Google Sheets
+        updateEntryStatus(student.ID, student.Name, 'Entered', student.Timestamp);
     }
 }
 
@@ -328,4 +436,64 @@ document.getElementById('downloadBtn').addEventListener('click', function() {
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     saveAs(blob, "entry_log.csv");
     alert(`Downloaded entry log with ${enteredStudents.length} entries!`);
+});
+
+// Clear all data
+document.getElementById('clearDataBtn').addEventListener('click', async function() {
+    if (confirm('⚠️ WARNING!\n\nThis will delete ALL entry records from Google Sheets permanently!\n\nAre you sure you want to continue?')) {
+        if (confirm('This action cannot be undone!\n\nClick OK to confirm deletion.')) {
+            try {
+                const response = await fetch(GOOGLE_SHEETS_URL, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        action: 'clearAll'
+                    })
+                });
+                
+                students.forEach(s => {
+                    s.Entry_Status = '';
+                    s.Timestamp = '';
+                });
+                populateTable();
+                alert('All entry data has been cleared from Google Sheets!');
+            } catch (error) {
+                alert('Error clearing data: ' + error.message);
+            }
+        }
+    }
+});
+
+// Test QR functionality
+document.getElementById('testQRBtn').addEventListener('click', function() {
+    if (!students.length) {
+        alert("Load Excel first!");
+        return;
+    }
+    
+    const container = document.getElementById('testQRContainer');
+    const qrDiv = document.getElementById('testQRCode');
+    
+    // Clear previous QR
+    qrDiv.innerHTML = '';
+    
+    // Generate test QR with first student's ID
+    const testStudent = students[0];
+    new QRCode(qrDiv, {
+        text: String(testStudent.ID),
+        width: 200,
+        height: 200,
+        colorDark: "#000000",
+        colorLight: "#ffffff",
+        correctLevel: QRCode.CorrectLevel.H
+    });
+    
+    container.style.display = 'block';
+});
+
+document.getElementById('closeTestQR').addEventListener('click', function() {
+    document.getElementById('testQRContainer').style.display = 'none';
 });

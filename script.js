@@ -4,41 +4,6 @@ let isScanning = false;
 let lastScanTime = 0;
 let scanCooldown = 3000; // 3 seconds between scans
 
-// Save entries to localStorage
-function saveEntriesToStorage() {
-    const entries = {};
-    students.forEach(s => {
-        if (s.Entry_Status === 'Entered') {
-            entries[s.ID] = {
-                Name: s.Name,
-                Year: s.Year,
-                Entry_Status: s.Entry_Status,
-                Timestamp: s.Timestamp || new Date().toISOString()
-            };
-        }
-    });
-    localStorage.setItem('navratri_entries', JSON.stringify(entries));
-    localStorage.setItem('navratri_last_save', new Date().toISOString());
-}
-
-// Load entries from localStorage
-function loadEntriesFromStorage() {
-    const savedEntries = localStorage.getItem('navratri_entries');
-    if (savedEntries) {
-        const entries = JSON.parse(savedEntries);
-        students.forEach(s => {
-            if (entries[s.ID]) {
-                s.Entry_Status = entries[s.ID].Entry_Status;
-                s.Timestamp = entries[s.ID].Timestamp;
-            }
-        });
-        const lastSave = localStorage.getItem('navratri_last_save');
-        console.log('Loaded entries from storage. Last save:', lastSave);
-        return Object.keys(entries).length;
-    }
-    return 0;
-}
-
 // Load Excel file from same folder
 async function loadExcel() {
     const response = await fetch('students.xlsx');
@@ -60,53 +25,29 @@ async function loadExcel() {
 
 document.getElementById('loadExcelBtn').addEventListener('click', loadExcel);
 
-// Helper: generate QR data URL using canvas (more reliable)
+// Helper: generate QR data URL using hidden DOM
 function generateQRDataURL(text) {
-    return new Promise((resolve, reject) => {
-        try {
-            // Create a temporary container
-            const container = document.createElement('div');
-            container.style.position = 'fixed';
-            container.style.top = '-9999px';
-            container.style.left = '-9999px';
-            document.body.appendChild(container);
+    return new Promise((resolve) => {
+        const tempDiv = document.createElement('div');
+        tempDiv.style.display = 'none';
+        document.body.appendChild(tempDiv);
 
-            // Generate QR code
-            const qr = new QRCode(container, {
-                text: String(text),
-                width: 200,
-                height: 200,
-                colorDark: "#000000",
-                colorLight: "#ffffff",
-                correctLevel: QRCode.CorrectLevel.H
-            });
+        new QRCode(tempDiv, {
+            text: String(text),
+            width: 150,
+            height: 150,
+            correctLevel: QRCode.CorrectLevel.H
+        });
 
-            // Wait for image to be generated
-            setTimeout(() => {
-                try {
-                    const canvas = container.querySelector('canvas');
-                    const img = container.querySelector('img');
-                    
-                    if (canvas) {
-                        const dataUrl = canvas.toDataURL('image/png');
-                        document.body.removeChild(container);
-                        resolve(dataUrl);
-                    } else if (img && img.src) {
-                        const dataUrl = img.src;
-                        document.body.removeChild(container);
-                        resolve(dataUrl);
-                    } else {
-                        document.body.removeChild(container);
-                        reject(new Error('QR code generation failed'));
-                    }
-                } catch (err) {
-                    document.body.removeChild(container);
-                    reject(err);
-                }
-            }, 300);
-        } catch (error) {
-            reject(error);
-        }
+        setTimeout(() => {
+            const img = tempDiv.querySelector('img');
+            if (img) {
+                resolve(img.src);
+            } else {
+                resolve(null);
+            }
+            document.body.removeChild(tempDiv);
+        }, 200);
     });
 }
 
@@ -118,13 +59,11 @@ document.getElementById('generatePDFBtn').addEventListener('click', async functi
     }
 
     this.disabled = true;
-    const originalText = this.innerText;
     this.innerText = "Generating...";
 
     try {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
-        let isFirstPage = true;
 
         for (let i = 0; i < students.length; i++) {
             const s = students[i];
@@ -132,49 +71,34 @@ document.getElementById('generatePDFBtn').addEventListener('click', async functi
             // Show progress
             this.innerText = `Generating ${i + 1}/${students.length}`;
             
-            // Give UI time to update
-            await new Promise(resolve => setTimeout(resolve, 100));
+            const qrDataUrl = await generateQRDataURL(String(s.ID));
             
-            try {
-                const qrDataUrl = await generateQRDataURL(String(s.ID));
-                
-                if (!qrDataUrl) {
-                    console.error("Failed to generate QR for ID:", s.ID);
-                    continue;
-                }
-
-                // Add new page if not first
-                if (!isFirstPage) {
-                    doc.addPage();
-                }
-                isFirstPage = false;
-
-                // Add text
-                doc.setFontSize(18);
-                doc.text(`Student: ${s.Name}`, 20, 20);
-                doc.setFontSize(14);
-                doc.text(`ID: ${s.ID}`, 20, 35);
-                doc.text(`Year: ${s.Year}`, 20, 45);
-
-                // Add QR code image
-                doc.addImage(qrDataUrl, 'PNG', 20, 55, 60, 60);
-                
-            } catch (err) {
-                console.error("Error processing student", s.ID, err);
+            if (!qrDataUrl) {
+                console.error("Failed to generate QR for", s.ID);
+                continue;
             }
+
+            doc.setFontSize(16);
+            doc.text(`Student: ${s.Name}`, 20, 20);
+            doc.text(`ID: ${s.ID}`, 20, 30);
+            doc.text(`Year: ${s.Year}`, 20, 40);
+
+            doc.addImage(qrDataUrl, 'PNG', 20, 50, 50, 50);
+
+            if (i < students.length - 1) doc.addPage();
+            
+            // Give browser time to breathe
+            await new Promise(resolve => setTimeout(resolve, 50));
         }
 
-        // Save PDF
-        const filename = `Student_QR_Codes_${new Date().getTime()}.pdf`;
-        doc.save(filename);
-        alert(`PDF generated successfully!\n${students.length} QR codes created.`);
-        
+        doc.save("All_Student_QR.pdf");
+        alert("PDF generated successfully!");
     } catch (error) {
         alert("Error generating PDF: " + error.message);
         console.error(error);
     } finally {
         this.disabled = false;
-        this.innerText = originalText;
+        this.innerText = "Generate QR PDF";
     }
 });
 
@@ -277,7 +201,7 @@ document.getElementById('status').addEventListener('click', function() {
         this.innerText = "Point camera at QR code";
         this.style.color = 'white';
         this.style.fontSize = '18px';
-        lastScanTime = 0; // Reset cooldown - ready to scan next person
+        lastScanTime = 0; // Reset cooldown
     }
 });
 
@@ -358,15 +282,11 @@ function handleScan(data) {
         playBeep(false);
     } else {
         student.Entry_Status = 'Entered';
-        student.Timestamp = new Date().toISOString();
         statusDiv.innerText = `✓ ${student.Name}\n(ID: ${student.ID})\nEntry Successful!\n\nTap to continue...`;
         statusDiv.style.color = '#00ff00';
         statusDiv.style.fontSize = '22px';
         playBeep(true);
         populateTable();
-        
-        // Update in Google Sheets
-        updateEntryStatus(student.ID, student.Name, 'Entered', student.Timestamp);
     }
 }
 
@@ -408,62 +328,4 @@ document.getElementById('downloadBtn').addEventListener('click', function() {
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     saveAs(blob, "entry_log.csv");
     alert(`Downloaded entry log with ${enteredStudents.length} entries!`);
-});
-
-// Clear all data
-document.getElementById('clearDataBtn').addEventListener('click', async function() {
-    if (confirm('⚠️ WARNING!\n\nThis will delete ALL entry records from Google Sheets permanently!\n\nAre you sure you want to continue?')) {
-        if (confirm('This action cannot be undone!\n\nClick OK to confirm deletion.')) {
-            try {
-                const response = await fetch(GOOGLE_SHEETS_URL, {
-                    method: 'POST',
-                    mode: 'no-cors',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        action: 'clearAll'
-                    })
-                });
-                
-                students.forEach(s => {
-                    s.Entry_Status = '';
-                    s.Timestamp = '';
-                });
-                populateTable();
-                alert('All entry data has been cleared from Google Sheets!');
-            } catch (error) {
-                alert('Error clearing data: ' + error.message);
-            }
-        }
-    }
-});
-
-// Test QR Generation
-document.getElementById('testQRBtn').addEventListener('click', function() {
-    if (!students.length) {
-        alert("Load Excel first!");
-        return;
-    }
-    
-    const testContainer = document.getElementById('testQRContainer');
-    const qrDiv = document.getElementById('testQRCode');
-    qrDiv.innerHTML = '';
-    
-    // Generate QR for first student
-    const testStudent = students[0];
-    new QRCode(qrDiv, {
-        text: String(testStudent.ID),
-        width: 200,
-        height: 200,
-        colorDark: "#000000",
-        colorLight: "#ffffff",
-        correctLevel: QRCode.CorrectLevel.H
-    });
-    
-    testContainer.style.display = 'block';
-});
-
-document.getElementById('closeTestQR').addEventListener('click', function() {
-    document.getElementById('testQRContainer').style.display = 'none';
 });
